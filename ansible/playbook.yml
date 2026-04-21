@@ -1,0 +1,104 @@
+---
+- name: Configure Todo App Server
+  hosts: servers
+  become: true
+  vars:
+    docker_compose_version: "2.24.0"
+    app_dir: /opt/todo-app
+    docker_hub_username: "{{ lookup('env', 'DOCKER_USERNAME') }}"
+    docker_image: "{{ docker_hub_username }}/todo-api:latest"
+
+  tasks:
+    # ---- System Setup ----
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Install required system packages
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+          - python3-pip
+        state: present
+
+    # ---- Docker Installation ----
+    - name: Add Docker GPG key
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+
+    - name: Add Docker repository
+      apt_repository:
+        repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        state: present
+
+    - name: Install Docker
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-compose-plugin
+        state: present
+
+    - name: Ensure Docker is running
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+
+    # ---- Application Deployment ----
+    - name: Create application directory
+      file:
+        path: "{{ app_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Copy docker-compose.yml
+      copy:
+        src: ../docker-compose.prod.yml
+        dest: "{{ app_dir }}/docker-compose.yml"
+        mode: "0644"
+
+    - name: Copy nginx config
+      copy:
+        src: ../nginx/
+        dest: "{{ app_dir }}/nginx/"
+        mode: "0644"
+
+    - name: Login to Docker Hub
+      community.docker.docker_login:
+        username: "{{ docker_hub_username }}"
+        password: "{{ lookup('env', 'DOCKER_PASSWORD') }}"
+
+    - name: Pull latest API image
+      community.docker.docker_image:
+        name: "{{ docker_image }}"
+        source: pull
+        force_source: yes
+
+    - name: Start application with Docker Compose
+      community.docker.docker_compose_v2:
+        project_src: "{{ app_dir }}"
+        state: present
+        pull: always
+
+    - name: Verify containers are running
+      community.docker.docker_container_info:
+        name: "{{ item }}"
+      register: container_info
+      loop:
+        - todo-api
+        - todo-mongo
+        - todo-nginx
+
+    - name: Display container status
+      debug:
+        msg: "{{ item.item }}: {{ item.container.State.Status }}"
+      loop: "{{ container_info.results }}"
+      when: item.exists
