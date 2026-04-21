@@ -2,6 +2,8 @@
 
 A production-ready multi-container application built with **Node.js**, **Express**, **MongoDB**, **Docker Compose**, and **Nginx**. Includes infrastructure-as-code (Terraform + Ansible) and CI/CD (GitHub Actions).
 
+https://roadmap.sh/projects/multi-container-service
+
 ## Architecture
 
 ```
